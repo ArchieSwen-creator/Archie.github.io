@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Election System - Public Gallery</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; }
+        .candidate-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .candidate-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        }
+        .nav-tabs .nav-link.active {
+            font-weight: bold;
+            border-bottom: 3px solid #0d6efd;
+        }
+        .party-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+        .vote-progress {
+            height: 8px;
+        }
+        .candidate-img {
+            height: 200px;
+            object-fit: cover;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+        }
+        .disabled-card {
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">
+                <i class="bi bi-check2-square me-2"></i>Student Election System
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="index.html" id="nav-public">
+                            <i class="bi bi-people-fill me-1"></i> Public Gallery
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="login.html" id="nav-vote">
+                            <i class="bi bi-check2-circle me-1"></i> Vote Now
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin.html" id="nav-admin">
+                            <i class="bi bi-gear-fill me-1"></i> Admin Dashboard
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Public Voting Gallery -->
+        <div id="public-gallery">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Election Candidates</h2>
+                <div id="voting-status-alert" class="alert alert-info d-flex align-items-center" role="alert"></div>
+            </div>
+            <div class="row" id="candidates-container">
+                <!-- Candidate cards will be dynamically inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Data initialization
+        function initializeData() {
+            if (!localStorage.getItem('candidates')) {
+                localStorage.setItem('candidates', JSON.stringify([]));
+            }
+            if (!localStorage.getItem('voters')) {
+                localStorage.setItem('voters', JSON.stringify([]));
+            }
+            if (!localStorage.getItem('electionSettings')) {
+                localStorage.setItem('electionSettings', JSON.stringify({ startTime: null, endTime: null }));
+            }
+        }
+
+        // Utility functions
+        function getCandidates() {
+            return JSON.parse(localStorage.getItem('candidates') || '[]');
+        }
+
+        function getElectionSettings() {
+            return JSON.parse(localStorage.getItem('electionSettings') || '{}');
+        }
+
+        function isVotingActive() {
+            const settings = getElectionSettings();
+            const now = new Date();
+            const startTime = settings.startTime ? new Date(settings.startTime) : null;
+            const endTime = settings.endTime ? new Date(settings.endTime) : null;
+            
+            if (!startTime || !endTime) return false;
+            
+            return now >= startTime && now <= endTime;
+        }
+
+        function getTimeRemaining() {
+            const settings = getElectionSettings();
+            const now = new Date();
+            const startTime = settings.startTime ? new Date(settings.startTime) : null;
+            const endTime = settings.endTime ? new Date(settings.endTime) : null;
+            
+            if (!startTime || !endTime) return { status: 'not-scheduled', message: 'Voting period has not been scheduled' };
+            
+            if (now < startTime) {
+                const diff = startTime - now;
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                return { status: 'not-started', message: `Voting will start in ${hours}h ${minutes}m` };
+            } else if (now > endTime) {
+                return { status: 'ended', message: 'Voting has ended' };
+            } else {
+                const diff = endTime - now;
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                return { status: 'active', message: `Voting ends in ${hours}h ${minutes}m` };
+            }
+        }
+
+        function calculatePartyPercentages() {
+            const candidates = getCandidates();
+            const totalVotes = candidates.reduce((sum, candidate) => sum + candidate.votes, 0);
+            
+            return candidates.map(candidate => {
+                const percentage = totalVotes > 0 ? ((candidate.votes / totalVotes) * 100).toFixed(1) : 0;
+                return { ...candidate, percentage };
+            });
+        }
+
+        // Render public gallery
+        function renderPublicGallery() {
+            const candidatesContainer = document.getElementById('candidates-container');
+            const statusAlert = document.getElementById('voting-status-alert');
+            const votingStatus = getTimeRemaining();
+            
+            statusAlert.textContent = votingStatus.message;
+            
+            if (votingStatus.status === 'active') {
+                statusAlert.className = 'alert alert-success d-flex align-items-center';
+            } else if (votingStatus.status === 'ended') {
+                statusAlert.className = 'alert alert-danger d-flex align-items-center';
+            } else {
+                statusAlert.className = 'alert alert-warning d-flex align-items-center';
+            }
+            
+            const candidatesWithPercentages = calculatePartyPercentages();
+            
+            candidatesContainer.innerHTML = '';
+            
+            if (candidatesWithPercentages.length === 0) {
+                candidatesContainer.innerHTML = '<p class="text-center">No candidates available. Please contact the admin to add candidates.</p>';
+                return;
+            }
+            
+            candidatesWithPercentages.forEach(candidate => {
+                const isDisabled = votingStatus.status !== 'active';
+                const photo = candidate.photo || 'https://placehold.co/300x400/007bff/white?text=' + encodeURIComponent(candidate.name);
+                
+                const card = document.createElement('div');
+                card.className = `col-md-4 mb-4 ${isDisabled ? 'disabled-card' : ''}`;
+                card.innerHTML = `
+                    <div class="card candidate-card h-100">
+                        <span class="party-badge badge bg-primary">${candidate.party}</span>
+                        <img src="${photo}" class="card-img-top candidate-img" alt="${candidate.name}">
+                        <div class="card-body">
+                            <h5 class="card-title">${candidate.name}</h5>
+                            <p class="card-text">${candidate.party}</p>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-muted">Votes: ${candidate.votes}</span>
+                                <span class="text-primary fw-bold">${candidate.percentage}%</span>
+                            </div>
+                            <div class="progress vote-progress mt-2">
+                                <div class="progress-bar" role="progressbar" style="width: ${candidate.percentage}%"></div>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-transparent">
+                            <button class="btn btn-primary w-100 vote-btn" data-candidate-id="${candidate.id}" ${isDisabled ? 'disabled' : ''}>
+                                ${isDisabled ? (votingStatus.status === 'ended' ? 'Voting Ended' : 'Voting Not Started') : 'Vote Now'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                candidatesContainer.appendChild(card);
+            });
+            
+            document.querySelectorAll('.vote-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    if (isVotingActive()) {
+                        window.location.href = 'login.html';
+                    }
+                });
+            });
+        }
+
+        // Initialize application
+        function initApp() {
+            initializeData();
+            renderPublicGallery();
+            setInterval(renderPublicGallery, 5000); // Reduced to 5s for faster updates
+        }
+
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
